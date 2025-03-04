@@ -36,13 +36,13 @@ count2=0
 count3=0
 for i in posList:
     if i[0]<367:
-        l['PARKING_LOT1'].append(0)
+        l['PARKING_1'].append(0)
         count1+=1
     elif i[0]>=367 and i[0]<700:
-        l['PARKING_LOT2'].append(0)
+        l['PARKING_2'].append(0)
         count2+=1
     else:
-        l['PARKING_LOT3'].append(0)
+        l['PARKING_3'].append(0)
         count3+=1
 print(l)
 print(count1,count2,count3)
@@ -80,21 +80,21 @@ def check_parking_space_single(img_processed, pos):
     if count < 950:
         with data_lock:
             if x<367 and pos<=count1:
-                l['PARKING_LOT1'][pos] = 0
+                l['PARKING_1'][pos] = 0
             elif x>=367 and x<700 and pos>count1 and pos<count2+count1:
-                l['PARKING_LOT2'][pos-count1] = 0
+                l['PARKING_2'][pos-count1] = 0
             else:
-                l['PARKING_LOT3'][pos-count2-count1] = 0
+                l['PARKING_3'][pos-count2-count1] = 0
         color = (0, 255, 0)
         thickness = 3
     else:
         with data_lock:
             if x<367 and pos<=count1:
-                l['PARKING_LOT1'][pos] = 1
+                l['PARKING_1'][pos] = 1
             elif x>=367 and x<700 and pos>count1 and pos<count2+count1:
-                l['PARKING_LOT2'][pos-count1] = 1
+                l['PARKING_2'][pos-count1] = 1
             else:
-                l['PARKING_LOT3'][pos-count2-count1] = 1
+                l['PARKING_3'][pos-count2-count1] = 1
         color = (0, 0, 255)
         thickness = 2
     cv2.rectangle(img, posList[pos], (posList[pos][0] + width, posList[pos][1] + height), color, thickness)
@@ -123,6 +123,7 @@ def event_stream():
     last_counter = None
     while True:
         data_event.wait()
+        print("sending")
         with data_lock:
             current_counter = perm_counter
             current_list = l.copy()
