@@ -123,13 +123,14 @@ def event_stream():
     last_counter = None
     while True:
         data_event.wait()
+        print("Sending")
         with data_lock:
             current_counter = perm_counter
             current_list = l.copy()
         if current_counter != last_counter:
             last_counter = current_counter
             yield f"data: {json.dumps(current_list)}\n\n"
-        time.sleep(0.5)
+        data_event.clear()
 @app.route('/stream')
 def stream():
     return Response(event_stream(), mimetype="text/event-stream")
