@@ -123,7 +123,6 @@ def event_stream():
     last_counter = None
     while True:
         data_event.wait()
-        print("sending")
         with data_lock:
             current_counter = perm_counter
             current_list = l.copy()
