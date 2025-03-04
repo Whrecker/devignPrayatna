@@ -229,7 +229,7 @@ def fix_dimension(img):
     return img
 
 def show_results(char):
-    model = load_model('my_model.h5')
+    model = load_model('model_LicensePlate.h5')
     """
     char is assumed to be a list of character images (e.g., from your segmentation step).
     """
