@@ -17,6 +17,8 @@ import datetime
 import pandas as pd
 import paho.mqtt.client as mqtt
 from flask_mqtt import Mqtt
+from tensorflow.keras.models import load_model
+
 app = Flask(__name__)
 
 app.config['MQTT_BROKER_URL'] = 'broker.emqx.io'  # or 'localhost' if using a local broker
@@ -76,9 +78,7 @@ data_event = threading.Event()
 
 
 def get_user_by_id(plate):
-    print("plate is",plate)
     response = supabase.table("license").select("*").eq("license", plate).execute()
-    print(response.data)
     if response.data:
         return True
     return False
@@ -86,7 +86,6 @@ def get_user_by_id(plate):
 def publish_occupancy_data():
     payload = json.dumps(l)
     mqtt.publish("carpark/occupancy", payload)
-    print("Published occupancy:", payload)
 
 def publish_cctv_frame(frame):
     """Encode the frame as JPEG and publish to MQTT."""
@@ -159,11 +158,7 @@ def event_stream():
             last_counter = current_counter
             yield f"data: {json.dumps(current_list)}\n\n"
         data_event.clear()
-@app.route('/stream')
-def stream():
-    payload = json.dumps(l)
-    mqtt.publish("carpark/occupancy",payload)
-    return jsonify({'status': 'Message published'})
+
 @app.route('/data', methods=["POST","GET"])
 def getting_data():
     try:
@@ -178,8 +173,7 @@ def getting_data():
         current_time = datetime.datetime.now()
         duration = current_time + datetime.timedelta(minutes=2)
         
-        # Convert to ISO format for JSON/PostgreSQL compatibility
-        license_plate = "ABCD943"  # Renamed variable to avoid conflict with built-in `license`
+        license_plate = "ABCD943"  
         duration_iso = duration.isoformat()
         current_time_iso = current_time.isoformat()
 
@@ -268,28 +262,28 @@ def video_processing():
         kernel = np.ones((3, 3), np.uint8)
         img_dilate = cv2.dilate(img_median, kernel, iterations=1)
         check_parking_space_parallel(img_dilate)
-        
-    cap.release()
-    cv2.destroyAllWindows()
-def plate_detection():        
-    img_ori=cv2.imread('licence_plate.jpg')
-    plate=licence_plate_detection.sending_data(img_ori)
-    print(get_user_by_id(plate))
-    if get_user_by_id(plate):
-        print("access_granted")
-    else:
-        print("access_denied")
+
+def plate_detection():
+    model = load_model('model_LicensePlate.h5')
+    cap = cv2.VideoCapture('licence_plate.mp4')
+    frame_count = 0
+    while cap.isOpened():
+        ret, frame = cap.read()
+        frame_count += 1
+        if not ret:
+            break
+        if frame_count % 1==0:
+            plate=licence_plate_detection.sending_data(frame, model)
+            if plate=="KA02AG5359":
+                print("sent")
+                payload = json.dumps(plate)
+                mqtt.publish("ocr/occupancy", payload)
 def delete_data():
     while True:
-        print("=============================")
-        print("deleting")
         all_data = supabase.table("license").select("*").execute()
-        print("All data:", all_data.data)
         now = datetime.datetime.now().isoformat()
         response = supabase.table("license").delete().lt("duration", now).execute()
-        print(response)
         all_data = supabase.table("license").select("*").execute()
-        print("All data:", all_data.data)
         time.sleep(200)
 video_thread = threading.Thread(target=video_processing, daemon=True)
 plate_thread=threading.Thread(target=plate_detection,daemon=True)

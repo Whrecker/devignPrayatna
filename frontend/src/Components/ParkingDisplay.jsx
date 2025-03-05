@@ -17,7 +17,7 @@ function getRandomColor() {
 
 const MQTT_BROKER = "ws://broker.hivemq.com:8000/mqtt"; // Use WebSocket-based MQTT broker
 const MQTT_TOPIC = "carpark/occupancy"; // Topic where backend publishes parking data
-
+const MQTT_TOPIC2= "ocr/occupancy"
 function ParkingScene({ slots, position, parkingName }) {
     return (
         <Canvas
@@ -66,31 +66,47 @@ export default function ParkingDisplay() {
     const [parkingData, setParkingData] = useState([]);
 
     useEffect(() => {
-        // Connect to MQTT broker
-        const client = mqtt.connect('ws://broker.emqx.io:8083/mqtt');
+    const client = mqtt.connect('ws://broker.emqx.io:8083/mqtt');
+    const client2 = mqtt.connect('ws://broker.emqx.io:8083/mqtt');
 
-        client.on("connect", () => {
-            console.log("Connected to MQTT Broker");
-            client.subscribe(MQTT_TOPIC);
-        });
+    // Client 1 Setup
+    client.on("connect", () => {
+        console.log("Connected to MQTT Broker1");
+        client.subscribe(MQTT_TOPIC);
+    });
 
-        client.on("message", (topic, message) => {
-            console.log(`Received from ${topic}:`, message.toString());
+    // Client 2 Setup
+    client2.on("connect", () => {
+        console.log("Connected to MQTT Broker2");
+        client2.subscribe(MQTT_TOPIC2); // Fixed this line
+    });
 
-            // Convert received string data into JSON (assuming backend sends JSON)
-            try {
-                const parsedData = JSON.parse(message.toString());
-                setSlots(parsedData); // Update state with new data
-            } catch (error) {
-                console.error("Error parsing MQTT message:", error);
-            }
-        });
+    // Message handlers
+    client.on("message", (topic, message) => {
+        try {
+            const parsedData = JSON.parse(message.toString());
+            setSlots(parsedData);
+        } catch (error) {
+            console.error("Error parsing MQTT message:", error);
+        }
+    });
 
-        // Cleanup function to disconnect on unmount
-        return () => {
-            client.end();
-        };
-    }, []); 
+    client2.on("message", (topic, message) => {
+        console.log(`Received from ${topic}:`, message.toString());
+        // Handle OCR data here
+    });
+
+    // Error handling
+    [client, client2].forEach(c => {
+        c.on("error", (err) => console.error("MQTT error:", err));
+        c.on("offline", () => console.log("MQTT offline"));
+    });
+
+    return () => {
+        client.end();
+        client2.end(); // Cleanup both connections
+    };
+}, []); 
 
 /*
     useEffect(() => {
