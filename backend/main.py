@@ -16,17 +16,17 @@ from supabase import create_client, Client
 import datetime
 import pandas as pd
 import paho.mqtt.client as mqtt
+from flask_mqtt import Mqtt
+app = Flask(__name__)
 
-MQTT_BROKER = "localhost"    # Update if your broker is elsewhere
-MQTT_PORT = 1883
-MQTT_TOPIC_OCCUPANCY = "carpark/occupancy"
-#MQTT_TOPIC_CCTV = "carpark/cctv"
+app.config['MQTT_BROKER_URL'] = 'broker.emqx.io'  # or 'localhost' if using a local broker
+app.config['MQTT_BROKER_PORT'] = 1883
+app.config['MQTT_USERNAME'] = ''  # if required
+app.config['MQTT_PASSWORD'] = ''  # if required
+app.config['MQTT_KEEPALIVE'] = 60
+app.config['MQTT_TLS_ENABLED'] = False  # set to True if using TLS
 
-# Set up MQTT client
-mqtt_client = mqtt.Client()
-mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-mqtt_client.loop_start()  # Start MQTT network loop in background
-latest_frame = None
+mqtt = Mqtt(app)
 
 load_dotenv()
 url = "https://lyalpkfpvzhcyipwxnqt.supabase.co"
@@ -85,7 +85,7 @@ def get_user_by_id(plate):
 
 def publish_occupancy_data():
     payload = json.dumps(l)
-    mqtt_client.publish(MQTT_TOPIC_OCCUPANCY, payload)
+    mqtt.publish("carpark/occupancy", payload)
     print("Published occupancy:", payload)
 
 def publish_cctv_frame(frame):
@@ -161,7 +161,9 @@ def event_stream():
         data_event.clear()
 @app.route('/stream')
 def stream():
-    return Response(event_stream(), mimetype="text/event-stream")
+    payload = json.dumps(l)
+    mqtt.publish("carpark/occupancy",payload)
+    return jsonify({'status': 'Message published'})
 @app.route('/data', methods=["POST","GET"])
 def getting_data():
     try:
@@ -266,12 +268,7 @@ def video_processing():
         kernel = np.ones((3, 3), np.uint8)
         img_dilate = cv2.dilate(img_median, kernel, iterations=1)
         check_parking_space_parallel(img_dilate)
-        cv2.imshow("Image", img)
-        with data_lock:
-            latest_frame = img.copy()
-        #publish_cctv_frame(img)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        
     cap.release()
     cv2.destroyAllWindows()
 def plate_detection():        

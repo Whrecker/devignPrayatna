@@ -5,19 +5,17 @@ import matplotlib.pyplot as plt
 
 
 
-def segmenting(img_ori):        
+def segmenting(img_ori):    
     height, width, channel = img_ori.shape
     gray = cv2.cvtColor(img_ori, cv2.COLOR_BGR2GRAY)
-
+    
     structuringElement = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
 
     imgTopHat = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, structuringElement)
     imgBlackHat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, structuringElement)
-
     imgGrayscalePlusTopHat = cv2.add(gray, imgTopHat)
     gray = cv2.subtract(imgGrayscalePlusTopHat, imgBlackHat)
-
-
+    
     img_blurred = cv2.GaussianBlur(gray, ksize=(5, 5), sigmaX=0)
     global img_thresh
     img_thresh = cv2.adaptiveThreshold(
@@ -28,7 +26,6 @@ def segmenting(img_ori):
         blockSize=19, 
         C=9
         )
-
     contours, _= cv2.findContours(
     img_thresh, 
     mode=cv2.RETR_LIST, 
@@ -36,8 +33,6 @@ def segmenting(img_ori):
     )
 
     temp_result = np.zeros((height, width, channel), dtype=np.uint8)
-
-    cv2.drawContours(temp_result, contours=contours, contourIdx=-1, color=(255, 255, 255))
 
     contours_dict = []
 
@@ -55,9 +50,9 @@ def segmenting(img_ori):
             'cx': x + (w / 2),
             'cy': y + (h / 2)
         })
-    MIN_AREA = 80
-    MIN_WIDTH, MIN_HEIGHT = 2, 8
-    MIN_RATIO, MAX_RATIO = 0.25, 1.0
+    MIN_AREA = 40
+    MIN_WIDTH, MIN_HEIGHT = 2, 4
+    MIN_RATIO, MAX_RATIO = 0.25, 0.4
 
     possible_contours = []
 
@@ -84,9 +79,9 @@ def find_chars(contour_list):
     MAX_DIAG_MULTIPLYER = 5 # 5
     MAX_ANGLE_DIFF = 12.0 # 12.0
     MAX_AREA_DIFF = 0.5 # 0.5
-    MAX_WIDTH_DIFF = 0.8
-    MAX_HEIGHT_DIFF = 0.2
-    MIN_N_MATCHED = 3 # 3
+    MAX_WIDTH_DIFF = 1
+    MAX_HEIGHT_DIFF = 0.5
+    MIN_N_MATCHED = 1 # 3
     matched_result_idx = []
     
     for d1 in contour_list:
@@ -187,7 +182,6 @@ def find_contours(dimensions, img) :
             
     # Return characters on ascending order with respect to the x-coordinate (most-left character first)
             
-    plt.show()
     # arbitrary function that stores sorted list of character indeces
     indices = sorted(range(len(x_cntr_list)), key=lambda k: x_cntr_list[k])
     img_res_copy = []
@@ -211,12 +205,12 @@ def segment_characters(image) :
     img_lp[:,330:333] = 255
 
     # Estimations of character contours sizes of cropped license plates
-    dimensions = [LP_WIDTH/6,
-                       LP_WIDTH/2,
+    dimensions = [LP_WIDTH/8,
+                       LP_WIDTH/4,
                        LP_HEIGHT/10,
-                       2*LP_HEIGHT/3]
+                       LP_HEIGHT/3]
     
-
+    cv2.imwrite('contour.jpg', img_lp)
     # Get contours within cropped license plate
     char_list = find_contours(dimensions, img_lp)
 
@@ -260,129 +254,131 @@ def show_results(char):
     plate_number = ''.join(output)
     return plate_number
 def sending_data(img_ori):
-    height, width, channel = img_ori.shape
-    global possible_contours
-    possible_contours = segmenting(img_ori)
-    result_idx = find_chars(possible_contours)
-    matched_result = []
-    for idx_list in result_idx:
-        matched_result.append(np.take(possible_contours, idx_list))
+    while(img_ori.isOpened()):
+        ret, frame = img_ori.read()
+        height, width, channel = frame.shape
+        plt.imshow(frame)
+        plt.show()
+        global possible_contours
+        possible_contours = segmenting(frame)
+        result_idx = find_chars(possible_contours)
+        matched_result = []
+        for idx_list in result_idx:
+            matched_result.append(np.take(possible_contours, idx_list))
 
-    # visualize possible contours
-    temp_result = np.zeros((height, width, channel), dtype=np.uint8)
+        # visualize possible contours
+        temp_result = np.zeros((height, width, channel), dtype=np.uint8)
 
-    for r in matched_result:
-        for d in r:
-            cv2.rectangle(temp_result, pt1=(d['x'], d['y']), pt2=(d['x']+d['w'], d['y']+d['h']), color=(255, 255, 255), thickness=2)
+        for r in matched_result:
+            for d in r:
+                cv2.rectangle(temp_result, pt1=(d['x'], d['y']), pt2=(d['x']+d['w'], d['y']+d['h']), color=(255, 255, 255), thickness=2)
 
+        result_idx = find_chars(possible_contours)
 
-    result_idx = find_chars(possible_contours)
+        matched_result = []
+        for idx_list in result_idx:
+            matched_result.append(np.take(possible_contours, idx_list))
+        temp_result = np.zeros((height, width, channel), dtype=np.uint8)
 
-    matched_result = []
-    for idx_list in result_idx:
-        matched_result.append(np.take(possible_contours, idx_list))
-    temp_result = np.zeros((height, width, channel), dtype=np.uint8)
+        for r in matched_result:
+            for d in r:
+                #cv2.drawContours(temp_result, d['contour'], -1, (255, 255, 255))
+                cv2.rectangle(frame, pt1=(d['x'], d['y']), pt2=(d['x']+d['w'], d['y']+d['h']), color=(0, 0, 255), thickness=2)
 
-    for r in matched_result:
-        for d in r:
-            #cv2.drawContours(temp_result, d['contour'], -1, (255, 255, 255))
-            cv2.rectangle(img_ori, pt1=(d['x'], d['y']), pt2=(d['x']+d['w'], d['y']+d['h']), color=(0, 0, 255), thickness=2)
+        PLATE_WIDTH_PADDING = 0.9 # 1.3
+        PLATE_HEIGHT_PADDING = 1 # 1.5
+        MIN_PLATE_RATIO = 0.3
+        MAX_PLATE_RATIO = 10
+        MIN_AREA = 40
+        MIN_WIDTH, MIN_HEIGHT = 1, 2
+        MIN_RATIO, MAX_RATIO = 0.25, 0.5
 
+        plate_imgs = []
+        plate_infos = []
 
-    PLATE_WIDTH_PADDING = 1.3 # 1.3
-    PLATE_HEIGHT_PADDING = 1.5 # 1.5
-    MIN_PLATE_RATIO = 3
-    MAX_PLATE_RATIO = 10
-    MIN_AREA = 80
-    MIN_WIDTH, MIN_HEIGHT = 2, 8
-    MIN_RATIO, MAX_RATIO = 0.25, 1.0
-
-    plate_imgs = []
-    plate_infos = []
-
-    for i, matched_chars in enumerate(matched_result):
-        sorted_chars = sorted(matched_chars, key=lambda x: x['cx'])
-
-        plate_cx = (sorted_chars[0]['cx'] + sorted_chars[-1]['cx']) / 2
-        plate_cy = (sorted_chars[0]['cy'] + sorted_chars[-1]['cy']) / 2
-        
-        plate_width = (sorted_chars[-1]['x'] + sorted_chars[-1]['w'] - sorted_chars[0]['x']) * PLATE_WIDTH_PADDING
-        
-        sum_height = 0
-        for d in sorted_chars:
-            sum_height += d['h']
-
-        plate_height = int(sum_height / len(sorted_chars) * PLATE_HEIGHT_PADDING)
-        
-        triangle_height = sorted_chars[-1]['cy'] - sorted_chars[0]['cy']
-        triangle_hypotenus = np.linalg.norm(
-            np.array([sorted_chars[0]['cx'], sorted_chars[0]['cy']]) - 
-            np.array([sorted_chars[-1]['cx'], sorted_chars[-1]['cy']])
-        )
-        
-        angle = np.degrees(np.arcsin(triangle_height / triangle_hypotenus))
-        
-        rotation_matrix = cv2.getRotationMatrix2D(center=(plate_cx, plate_cy), angle=angle, scale=1.0)
-        
-        img_rotated = cv2.warpAffine(img_thresh, M=rotation_matrix, dsize=(width, height))
-        
-        img_cropped = cv2.getRectSubPix(
-            img_rotated, 
-            patchSize=(int(plate_width), int(plate_height)), 
-            center=(int(plate_cx), int(plate_cy))
-        )
-        
-        if img_cropped.shape[1] / img_cropped.shape[0] < MIN_PLATE_RATIO or img_cropped.shape[1] / img_cropped.shape[0] < MIN_PLATE_RATIO > MAX_PLATE_RATIO:
-            continue
-        
-        plate_imgs.append(img_cropped)
-        plate_infos.append({
-            'x': int(plate_cx - plate_width / 2),
-            'y': int(plate_cy - plate_height / 2),
-            'w': int(plate_width),
-            'h': int(plate_height)
-        })
-        
-        
-    longest_idx, longest_text = -1, 0
-    plate_chars = []
-
-    for i, plate_img in enumerate(plate_imgs):
-        plate_img = cv2.resize(plate_img, dsize=(0, 0), fx=1.6, fy=1.6)
-        _, plate_img = cv2.threshold(plate_img, thresh=0.0, maxval=255.0, type=cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        
-        contours, _ = cv2.findContours(plate_img, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_SIMPLE)
-        
-        plate_min_x, plate_min_y = plate_img.shape[1], plate_img.shape[0]
-        plate_max_x, plate_max_y = 0, 0
-
-        for contour in contours:
-            x, y, w, h = cv2.boundingRect(contour)
+        for i, matched_chars in enumerate(matched_result):
+            sorted_chars = sorted(matched_chars, key=lambda x: x['cx'])
+            plate_cx = (sorted_chars[0]['cx'] + sorted_chars[-1]['cx']) / 2
+            plate_cy = (sorted_chars[0]['cy'] + sorted_chars[-1]['cy']) / 2
             
-            area = w * h
-            ratio = w / h
+            plate_width = (sorted_chars[-1]['x'] + sorted_chars[-1]['w'] - sorted_chars[0]['x']) * PLATE_WIDTH_PADDING
+            
+            sum_height = 0
+            for d in sorted_chars:
+                sum_height += d['h']
+            plate_height = int(sum_height / len(sorted_chars) * PLATE_HEIGHT_PADDING)
+            
+            triangle_height = sorted_chars[-1]['cy'] - sorted_chars[0]['cy']
+            triangle_hypotenus = np.linalg.norm(
+                np.array([sorted_chars[0]['cx'], sorted_chars[0]['cy']]) - 
+                np.array([sorted_chars[-1]['cx'], sorted_chars[-1]['cy']])
+            )
+            '''
+            print(triangle_hypotenus)
+            angle = np.degrees(np.arcsin(triangle_height / triangle_hypotenus))
+            
+            rotation_matrix = cv2.getRotationMatrix2D(center=(plate_cx, plate_cy), angle=angle, scale=1.0)
+            #might be trouble
+            img_rotated = cv2.warpAffine(img_thresh, M=rotation_matrix, dsize=(width, height))
+            '''
+            img_cropped = cv2.getRectSubPix(
+                img_thresh, 
+                patchSize=(int(plate_width), int(plate_height)), 
+                center=(int(plate_cx), int(plate_cy))
+            )
+            print(img_cropped.shape[1],img_cropped.shape[0],img_cropped.shape[1]/img_cropped.shape[0])
+            if img_cropped.shape[1] / img_cropped.shape[0] < MIN_PLATE_RATIO or img_cropped.shape[1] / img_cropped.shape[0] < MIN_PLATE_RATIO > MAX_PLATE_RATIO:
+                continue
+            
+            plate_imgs.append(img_cropped)
+            plate_infos.append({
+                'x': int(plate_cx - plate_width / 2),
+                'y': int(plate_cy - plate_height / 2),
+                'w': int(plate_width),
+                'h': int(plate_height)
+            })
+            
+            
+        longest_idx, longest_text = -1, 0
+        plate_chars = []
+        for i, plate_img in enumerate(plate_imgs):
+            plate_img = cv2.resize(plate_img, dsize=(0, 0), fx=1.6, fy=1.6)
+            _, plate_img = cv2.threshold(plate_img, thresh=0.0, maxval=255.0, type=cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+            contours, _ = cv2.findContours(plate_img, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_SIMPLE)         
+            plate_min_x, plate_min_y = plate_img.shape[1], plate_img.shape[0]
+            plate_max_x, plate_max_y = 0, 0
 
-            if area > MIN_AREA \
-            and w > MIN_WIDTH and h > MIN_HEIGHT \
-            and MIN_RATIO < ratio < MAX_RATIO:
-                if x < plate_min_x:
-                    plate_min_x = x
-                if y < plate_min_y:
-                    plate_min_y = y
-                if x + w > plate_max_x:
-                    plate_max_x = x + w
-                if y + h > plate_max_y:
-                    plate_max_y = y + h
-                    
-        img_result = plate_img[plate_min_y:plate_max_y, plate_min_x:plate_max_x]
-        
-        img_result = cv2.GaussianBlur(img_result, ksize=(3, 3), sigmaX=0)
-        _, img_result = cv2.threshold(img_result, thresh=0.0, maxval=255.0, type=cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        img_result = cv2.copyMakeBorder(img_result, top=10, bottom=10, left=10, right=10, borderType=cv2.BORDER_CONSTANT, value=(0,0,0))
-        break
-    img = 255-img_result
-    char = segment_characters(img)
-
-    return show_results(char)
-img_ori=cv2.imread('licence_plate.jpg')
+            for contour in contours:
+                x, y, w, h = cv2.boundingRect(contour)
+                
+                area = w * h
+                ratio = w / h
+                if area > MIN_AREA \
+                and w > MIN_WIDTH and h > MIN_HEIGHT \
+                and MIN_RATIO < ratio < MAX_RATIO:
+                    if x < plate_min_x:
+                        plate_min_x = x
+                    if y < plate_min_y:
+                        plate_min_y = y
+                    if x + w > plate_max_x:
+                        plate_max_x = x + w
+                    if y + h > plate_max_y:
+                        plate_max_y = y + h      
+            img_result = plate_img[plate_min_y:plate_max_y, plate_min_x:plate_max_x]
+            img_result = cv2.GaussianBlur(img_result, ksize=(3, 3), sigmaX=0)
+            _, img_result = cv2.threshold(img_result, thresh=0.0, maxval=255.0, type=cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+            img_result = cv2.copyMakeBorder(img_result, top=10, bottom=10, left=10, right=10, borderType=cv2.BORDER_CONSTANT, value=(0,0,0))
+            
+            break
+        try:
+            imgps = 255-img_result
+            charaa = segment_characters(imgps)
+            if len(charaa)==10:
+                return show_results(charaa)
+            else:
+                print(show_results(charaa))
+        except:
+            print("move on")
+img_ori=cv2.VideoCapture('licence_plate.mp4')
+img_ori.set(cv2.CAP_PROP_POS_FRAMES, 110)
 print(sending_data(img_ori))
