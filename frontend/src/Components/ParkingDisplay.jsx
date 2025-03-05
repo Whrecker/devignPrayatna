@@ -4,6 +4,7 @@ import { Box, Environment, MeshReflectorMaterial, OrbitControls, Plane, Text } f
 import { MeshBasicMaterial, MeshStandardMaterial } from "three";
 import { Car2 } from "./Car2";
 import mqtt from "mqtt";
+import { ParkingLot } from "./ParkingLot.jsx";
 
 function getRandomColor() {
     const letters = '0123456789ABCDEF';
@@ -14,31 +15,27 @@ function getRandomColor() {
     return color;
 }
 
-
 const MQTT_BROKER = "ws://broker.hivemq.com:8000/mqtt"; // Use WebSocket-based MQTT broker
 const MQTT_TOPIC = "carpark/occupancy"; // Topic where backend publishes parking data
-const MQTT_TOPIC2= "ocr/occupancy"
+
 function ParkingScene({ slots, position, parkingName }) {
+    const numColumns = 4; // Define the number of columns
+    const spacing = 2; // Define the spacing between cars
+
     return (
         <Canvas
             style={{ height: "50vh", width: "50vw" }}
             camera={{ position: [0, 5, 10], fov: 50 }}
         >
-            <Plane args={[10, 10]} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-                <MeshReflectorMaterial
-                    color="black"
-                />
-                {/* <meshStandardMaterial color="black"/> */}
-            </Plane>
             {slots.map((slot, index) =>
                 slot === 1 ? (
                     <Car2
                         key={index}
                         rotation={[0, Math.random() < 0.5 ? 0 : Math.PI, 0]}
                         position={[
-                            2 * (index % 4) - 3,
-                            0,
-                            -2 * (index >> 2)
+                          -(numColumns - 1) * spacing / 2 + (index % numColumns) * spacing,
+                          0,
+                          -(Math.floor(index / numColumns)) * spacing + 3
                         ]}
                         scale={[0.02, 0.02, 0.02]}
                         color={getRandomColor()}
@@ -54,76 +51,81 @@ function ParkingScene({ slots, position, parkingName }) {
             >
                 {parkingName}
             </Text>
-            <Environment preset="city" />
-            <OrbitControls />
+            <ParkingLot scale={2.8} position={[2, 0, 0]} rotation={[0, Math.PI / 2, 0]} />
+            <Environment preset="sunset" />
+            <OrbitControls
+                minAzimuthAngle={-Math.PI / 4}
+                maxAzimuthAngle={Math.PI / 4}
+                minPolarAngle={Math.PI / 4}
+                maxPolarAngle={Math.PI / 2}
+            />
         </Canvas>
     );
 }
 
 export default function ParkingDisplay() {
-    const [slots, setSlots] = useState(null);
+    // Initialize slots state from sessionStorage if available
+    const [slots, setSlots] = useState(() => {
+        const saved = sessionStorage.getItem('slots');
+        return saved ? JSON.parse(saved) : null;
+    });
 
     const [parkingData, setParkingData] = useState([]);
 
     useEffect(() => {
-    const client = mqtt.connect('ws://broker.emqx.io:8083/mqtt');
-    const client2 = mqtt.connect('ws://broker.emqx.io:8083/mqtt');
+        const client = mqtt.connect('ws://broker.emqx.io:8083/mqtt');
 
-    // Client 1 Setup
-    client.on("connect", () => {
-        console.log("Connected to MQTT Broker1");
-        client.subscribe(MQTT_TOPIC);
-    });
+        client.on("connect", () => {
+            console.log("Connected to MQTT Broker1");
+            client.subscribe(MQTT_TOPIC);
+        });
 
-    // Client 2 Setup
-    client2.on("connect", () => {
-        console.log("Connected to MQTT Broker2");
-        client2.subscribe(MQTT_TOPIC2); // Fixed this line
-    });
+        client.on("message", (topic, message) => {
+            try {
+                console.log(`Received from ${topic}:`, message.toString());
+                const parsedData = JSON.parse(message.toString());
+                setSlots(parsedData);
+                // Save the data to sessionStorage
+                sessionStorage.setItem('slots', JSON.stringify(parsedData));
+            } catch (error) {
+                console.error("Error parsing MQTT message:", error);
+            }
+        });
 
-    // Message handlers
-    client.on("message", (topic, message) => {
-        try {
-            const parsedData = JSON.parse(message.toString());
-            setSlots(parsedData);
-        } catch (error) {
-            console.error("Error parsing MQTT message:", error);
-        }
-    });
+        // Error handling
+        [client].forEach(c => {
+            c.on("error", (err) => console.error("MQTT error:", err));
+            c.on("offline", () => console.log("MQTT offline"));
+        });
 
-    client2.on("message", (topic, message) => {
-        console.log(`Received from ${topic}:`, message.toString());
-        // Handle OCR data here
-    });
+        return () => {
+            client.end();
+        };
+    }, []);
 
-    // Error handling
-    [client, client2].forEach(c => {
-        c.on("error", (err) => console.error("MQTT error:", err));
-        c.on("offline", () => console.log("MQTT offline"));
-    });
-
-    return () => {
-        client.end();
-        client2.end(); // Cleanup both connections
-    };
-}, []); 
-
-/*
+    /*
     useEffect(() => {
-        // Fetch initial slot data from Flask API
+        // Example: Fetch initial slot data from Flask API and store in sessionStorage
         fetch("http://127.0.0.1:5000/api/initial-slot-data")
             .then((res) => res.json())
-            .then((data) => setSlots(data));
+            .then((data) => {
+                setSlots(data);
+                sessionStorage.setItem('slots', JSON.stringify(data));
+            });
 
         const interval = setInterval(() => {
             fetch("http://127.0.0.1:5000/api/parking-data") // Replace with actual backend URL
                 .then((res) => res.json())
-                .then((data) => setSlots(data));
+                .then((data) => {
+                    setSlots(data);
+                    sessionStorage.setItem('slots', JSON.stringify(data));
+                });
         }, 5000); // Fetch data every 5 seconds
 
         return () => clearInterval(interval);
     }, []);
-*/
+    */
+
     if (!slots) {
         return <div>Loading...</div>;
     }
@@ -131,7 +133,7 @@ export default function ParkingDisplay() {
     return (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
             {Object.keys(slots).map((parking, index) => (
-                <div key={parking} >
+                <div key={parking}>
                     <ParkingScene
                         slots={slots[parking]}
                         position={[index % 2 * 10, 0, -Math.floor(index / 2) * 10]}
@@ -139,7 +141,6 @@ export default function ParkingDisplay() {
                     />
                 </div>
             ))}
-
 
             <div>
                 <h2>Smart Parking System</h2>

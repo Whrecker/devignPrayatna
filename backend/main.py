@@ -18,7 +18,6 @@ import pandas as pd
 import paho.mqtt.client as mqtt
 from flask_mqtt import Mqtt
 from tensorflow.keras.models import load_model
-
 app = Flask(__name__)
 
 app.config['MQTT_BROKER_URL'] = 'broker.emqx.io'  # or 'localhost' if using a local broker
@@ -45,30 +44,14 @@ def loading_excel():
     print("Raw data from Excel:")
     print(df)
     return df
-app = Flask(__name__)
-
 CORS(app)
-
 cap = cv2.VideoCapture('carPark.mp4')
 perm_counter = 0
 with open('CarParkPosition', 'rb') as f:
     posList = pickle.load(f)
 posList.sort(key=lambda tup: tup[1])
-l={'PARKING_1':[],'PARKING_2':[],'PARKING_3':[]}
+l={'PARKING_1':[0]*8,'PARKING_2':[0]*8,'PARKING_3':[0]*8,'PARKING_4':[0]*8}
 posList.sort()
-count1=0
-count2=0
-count3=0
-for i in posList:
-    if i[0]<367:
-        l['PARKING_1'].append(0)
-        count1+=1
-    elif i[0]>=367 and i[0]<700:
-        l['PARKING_2'].append(0)
-        count2+=1
-    else:
-        l['PARKING_3'].append(0)
-        count3+=1
 
 width, height = 107, 48
 
@@ -107,22 +90,28 @@ def check_parking_space_single(img_processed, pos):
                        thickness=2, offset=0, colorR=(0, 0, 255))
     if count < 950:
         with data_lock:
-            if x<367 and pos<=count1:
-                l['PARKING_1'][pos] = 0
-            elif x>=367 and x<700 and pos>count1 and pos<count2+count1:
-                l['PARKING_2'][pos-count1] = 0
-            else:
-                l['PARKING_3'][pos-count2-count1] = 0
+            if pos<=17:
+                l['PARKING_1'][pos%7] = 0
+            elif pos>17 and pos<=34:
+                l['PARKING_2'][pos%7] = 0
+            elif pos>34 and pos<=51:
+                l['PARKING_3'][pos%7] = 0
+            elif pos>51 and pos<=69:
+                l['PARKING_4'][pos%7] = 0
         color = (0, 255, 0)
         thickness = 3
     else:
         with data_lock:
-            if x<367 and pos<=count1:
-                l['PARKING_1'][pos] = 1
-            elif x>=367 and x<700 and pos>count1 and pos<count2+count1:
-                l['PARKING_2'][pos-count1] = 1
-            else:
-                l['PARKING_3'][pos-count2-count1] = 1
+            if pos<=17:
+                l['PARKING_1'][pos%7] = 1
+            elif pos>17 and pos<=34:
+                l['PARKING_2'][pos%7] = 1
+            elif pos>34 and pos<=51:
+                l['PARKING_3'][pos%7] = 1
+            elif pos>51 and pos<=69:
+                l['PARKING_4'][pos%7] = 1
+
+
         color = (0, 0, 255)
         thickness = 2
     cv2.rectangle(img, posList[pos], (posList[pos][0] + width, posList[pos][1] + height), color, thickness)
@@ -262,22 +251,22 @@ def video_processing():
         kernel = np.ones((3, 3), np.uint8)
         img_dilate = cv2.dilate(img_median, kernel, iterations=1)
         check_parking_space_parallel(img_dilate)
-
+'''
 def plate_detection():
     model = load_model('model_LicensePlate.h5')
     cap = cv2.VideoCapture('licence_plate.mp4')
     frame_count = 0
     while cap.isOpened():
         ret, frame = cap.read()
-        frame_count += 1
         if not ret:
             break
-        if frame_count % 1==0:
+        frame_count += 1
+        if frame_count % 50==0:
             plate=licence_plate_detection.sending_data(frame, model)
             if plate=="KA02AG5359":
-                print("sent")
-                payload = json.dumps(plate)
-                mqtt.publish("ocr/occupancy", payload)
+                payload = json.dumps(l)
+                mqtt.publish("carpark/occupancy", payload)
+'''
 def delete_data():
     while True:
         all_data = supabase.table("license").select("*").execute()
@@ -286,12 +275,12 @@ def delete_data():
         all_data = supabase.table("license").select("*").execute()
         time.sleep(200)
 video_thread = threading.Thread(target=video_processing, daemon=True)
-plate_thread=threading.Thread(target=plate_detection,daemon=True)
+#plate_thread=threading.Thread(target=plate_detection,daemon=True)
 delete_thread=threading.Thread(target=delete_data,daemon=True)
-plate_thread.start()
+#plate_thread.start()
 video_thread.start()
 delete_thread.start()
 
 
 if __name__ == "__main__":
-    app.run(debug=True, use_reloader=False,host="0.0.0.0")
+    app.run(debug=True, use_reloader=False,host="0.0.0.0",port=5001)
